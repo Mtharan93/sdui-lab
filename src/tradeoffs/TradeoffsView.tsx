@@ -1,8 +1,18 @@
 import './tradeoffs.css';
-import { Profiler, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  Profiler,
+  type ProfilerOnRenderCallback,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { flushSync } from 'react-dom';
 import { createDefaultRegistry } from '@/components';
-import { SduiRenderer } from '@/runtime';
+import { SduiRenderer, type ComponentRegistry } from '@/runtime';
+import type { ScreenDocumentV2 } from '@/schema';
 import { BENCHMARK_SCREEN_DOC } from './benchmarkScreen';
 import { HandwrittenScreen } from './HandwrittenScreen';
 import measuredBaseline from './measuredBaseline.json';
@@ -19,6 +29,36 @@ interface BrowserBenchmarkResult {
   sduiTotalMs: number;
 }
 
+const MemoHandwritten = memo(function MemoHandwritten({
+  externalName,
+  onRender,
+}: {
+  externalName?: string | undefined;
+  onRender: ProfilerOnRenderCallback;
+}) {
+  return (
+    <Profiler id="handwritten-screen" onRender={onRender}>
+      <HandwrittenScreen externalName={externalName} />
+    </Profiler>
+  );
+});
+
+const MemoSdui = memo(function MemoSdui({
+  document,
+  registry,
+  onRender,
+}: {
+  document: ScreenDocumentV2;
+  registry: ComponentRegistry;
+  onRender: ProfilerOnRenderCallback;
+}) {
+  return (
+    <Profiler id="sdui-screen" onRender={onRender}>
+      <SduiRenderer document={document} registry={registry} />
+    </Profiler>
+  );
+});
+
 function formatBytes(bytes: number): string {
   return `${(bytes / 1024).toFixed(2)} kB (${bytes.toLocaleString()} B)`;
 }
@@ -31,40 +71,56 @@ export function TradeoffsView() {
   );
   const [sduiStats, setSduiStats] = useState<ProfilerStats>(createInitialProfilerStats);
 
-  // Use refs for live updates inside Profiler callbacks without creating infinite commit loops.
   const handwrittenRef = useRef<ProfilerStats>(createInitialProfilerStats());
   const sduiRef = useRef<ProfilerStats>(createInitialProfilerStats());
   const isBatchRunningRef = useRef(false);
+  const hasMountedRef = useRef(false);
+  const syncTimerRef = useRef<number | null>(null);
 
   const [benchmarkIterationName, setBenchmarkIterationName] = useState<string | undefined>(
     undefined,
   );
   const [browserBench, setBrowserBench] = useState<BrowserBenchmarkResult | null>(null);
 
+  const scheduleStatsSync = useCallback(() => {
+    if (!hasMountedRef.current || isBatchRunningRef.current || syncTimerRef.current !== null) {
+      return;
+    }
+    syncTimerRef.current = window.setTimeout(() => {
+      syncTimerRef.current = null;
+      setHandwrittenStats(handwrittenRef.current);
+      setSduiStats(sduiRef.current);
+    }, 50);
+  }, []);
+
+  useEffect(() => {
+    hasMountedRef.current = true;
+    setHandwrittenStats(handwrittenRef.current);
+    setSduiStats(sduiRef.current);
+    return () => {
+      hasMountedRef.current = false;
+      if (syncTimerRef.current !== null) {
+        window.clearTimeout(syncTimerRef.current);
+      }
+    };
+  }, []);
+
   const onHandwrittenRender = useMemo(
     () =>
       createProfilerCallback((phase, actualDuration) => {
         handwrittenRef.current = applyProfilerSample(handwrittenRef.current, phase, actualDuration);
-        if (!isBatchRunningRef.current) {
-          queueMicrotask(() => {
-            setHandwrittenStats(handwrittenRef.current);
-          });
-        }
+        scheduleStatsSync();
       }),
-    [],
+    [scheduleStatsSync],
   );
 
   const onSduiRender = useMemo(
     () =>
       createProfilerCallback((phase, actualDuration) => {
         sduiRef.current = applyProfilerSample(sduiRef.current, phase, actualDuration);
-        if (!isBatchRunningRef.current) {
-          queueMicrotask(() => {
-            setSduiStats(sduiRef.current);
-          });
-        }
+        scheduleStatsSync();
       }),
-    [],
+    [scheduleStatsSync],
   );
 
   const sduiDoc = useMemo(() => {
@@ -181,9 +237,10 @@ export function TradeoffsView() {
                   {handwrittenStats.lastDurationMs ?? 'n/a'} ms
                 </span>
               </div>
-              <Profiler id="handwritten-screen" onRender={onHandwrittenRender}>
-                <HandwrittenScreen externalName={benchmarkIterationName} />
-              </Profiler>
+              <MemoHandwritten
+                externalName={benchmarkIterationName}
+                onRender={onHandwrittenRender}
+              />
             </div>
           )}
 
@@ -195,9 +252,7 @@ export function TradeoffsView() {
                   commits: {sduiStats.commits} · last: {sduiStats.lastDurationMs ?? 'n/a'} ms
                 </span>
               </div>
-              <Profiler id="sdui-screen" onRender={onSduiRender}>
-                <SduiRenderer document={sduiDoc} registry={registry} />
-              </Profiler>
+              <MemoSdui document={sduiDoc} registry={registry} onRender={onSduiRender} />
             </div>
           )}
         </div>

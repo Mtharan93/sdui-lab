@@ -32,7 +32,7 @@ export function CardNode({ props, children, context }: SduiComponentProps<CardPr
   const level = props.headingLevel ?? 'h2';
 
   return (
-    <section
+    <article
       className={`sdui-card ${props.elevated ? 'sdui-card--elevated' : ''}`.trim()}
       aria-labelledby={hasTitle ? headingId : undefined}
     >
@@ -47,6 +47,6 @@ export function CardNode({ props, children, context }: SduiComponentProps<CardPr
         </header>
       )}
       <div className="sdui-card__body">{children}</div>
-    </section>
+    </article>
   );
 }

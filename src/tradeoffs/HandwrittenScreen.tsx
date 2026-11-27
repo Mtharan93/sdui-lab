@@ -29,7 +29,7 @@ export function HandwrittenScreen({ externalName }: HandwrittenScreenProps) {
       <h3 className="sdui-text sdui-text--h3 sdui-text--tone-default">Profile: {effectiveName}</h3>
       <p className="sdui-text sdui-text--caption sdui-text--tone-muted">Role: {role}</p>
 
-      <section className="sdui-card sdui-card--elevated" aria-labelledby={cardHeadingId}>
+      <article className="sdui-card sdui-card--elevated" aria-labelledby={cardHeadingId}>
         <header className="sdui-card__header">
           <h3 id={cardHeadingId} className="sdui-card__title">
             Edit Details
@@ -91,7 +91,7 @@ export function HandwrittenScreen({ externalName }: HandwrittenScreenProps) {
             </button>
           </div>
         </div>
-      </section>
+      </article>
 
       {showChecklist && (
         <ol className="sdui-list">

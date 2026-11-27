@@ -1,5 +1,5 @@
 import './playground.css';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createDefaultRegistry } from '@/components';
 import { SduiRenderer } from '@/runtime';
 import { SCHEMA_VERSION_V1, validateRawDocument, type ValidationIssue } from '@/schema';
@@ -61,8 +61,14 @@ export function PlaygroundView() {
   );
   const [navMessage, setNavMessage] = useState<string | null>(null);
 
+  const isInitialMountRef = useRef(true);
+
   // Debounce live JSON validation as the user types.
   useEffect(() => {
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return;
+    }
     const timer = window.setTimeout(() => {
       setAnalysis((prev) => analyzeJsonText(editorText, prev.parsedDocument));
     }, 180);

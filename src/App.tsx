@@ -1,6 +1,7 @@
 import './styles/app.css';
 import { useState } from 'react';
 import { PlaygroundView } from './playground';
+import { TradeoffsView } from './tradeoffs';
 
 type ActiveTab = 'playground' | 'tradeoffs';
 
@@ -48,14 +49,7 @@ export default function App() {
       </header>
 
       <main id="main" className="app-main">
-        {activeTab === 'playground' ? (
-          <PlaygroundView />
-        ) : (
-          <section aria-label="Trade-offs placeholder">
-            <h2>Trade-offs</h2>
-            <p>Cost comparison benchmark page arrives in Milestone 9.</p>
-          </section>
-        )}
+        {activeTab === 'playground' ? <PlaygroundView /> : <TradeoffsView />}
       </main>
     </div>
   );

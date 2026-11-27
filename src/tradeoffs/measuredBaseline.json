@@ -1,0 +1,33 @@
+{
+  "measuredAt": "2026-11-27",
+  "bundle": {
+    "handwritten": {
+      "rawBytes": 3983,
+      "gzipBytes": 1112
+    },
+    "sduiRuntime": {
+      "rawBytes": 106085,
+      "gzipBytes": 22455
+    },
+    "deltaBytes": 102102,
+    "deltaGzipBytes": 21343
+  },
+  "profiler": {
+    "iterations": 50,
+    "environment": "Node v22.23.5 (win32/x64), jsdom, React dev-mode Profiler",
+    "handwritten": {
+      "mountCommits": 1,
+      "mountDurationMs": 3.927,
+      "updateCommits": 50,
+      "meanUpdateMs": 0.233,
+      "medianUpdateMs": 0.161
+    },
+    "sdui": {
+      "mountCommits": 1,
+      "mountDurationMs": 4.83,
+      "updateCommits": 50,
+      "meanUpdateMs": 0.742,
+      "medianUpdateMs": 0.604
+    }
+  }
+}

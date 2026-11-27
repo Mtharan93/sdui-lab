@@ -26,8 +26,8 @@
     "paths": {
       "@/*": ["src/*"]
     },
-    /* Vitest injects globals (describe, it, expect) — make tsc aware */
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
+    /* Vitest + Vite client types */
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
   "include": ["src", "e2e"],
   "exclude": ["node_modules", "dist"]

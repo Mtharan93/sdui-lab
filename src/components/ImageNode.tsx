@@ -3,10 +3,16 @@ import type { ImageProps } from '@/schema';
 
 export function ImageNode({ props, context }: SduiComponentProps<ImageProps>) {
   const alt = context.resolveText(props.alt);
+  const baseUrl = import.meta.env.BASE_URL;
+  const resolvedSrc =
+    props.src.startsWith('/') && !props.src.startsWith('//') && baseUrl !== '/'
+      ? `${baseUrl.replace(/\/$/, '')}${props.src}`
+      : props.src;
+
   const img = (
     <img
       className="sdui-image"
-      src={props.src}
+      src={resolvedSrc}
       alt={alt}
       width={props.width}
       height={props.height}

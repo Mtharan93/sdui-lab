@@ -8,6 +8,8 @@ import {
   type StateValue,
   type ValidationIssue,
 } from '@/schema';
+import { NodeErrorBoundary } from './ErrorBoundary';
+import { NodeFallback } from './NodeFallback';
 import type { ComponentRegistry } from './registry';
 import type { DialogPayload, SduiRuntimeContext } from './types';
 
@@ -15,18 +17,18 @@ export interface SduiRendererProps {
   /** Raw JSON document (v2 or unknown shape — validated node-by-node for resilience). */
   document: unknown;
   registry: ComponentRegistry;
-  onNavigate?: (target: string) => void;
-  onOpenDialog?: (dialog: DialogPayload) => void;
-  onStateChange?: (state: StateMap) => void;
-  /** Optional custom fallback renderer used in M4 error-isolation layer. */
-  renderFallback?: (info: {
-    nodeId: string;
-    path: string;
-    reason: string;
-    issues?: ValidationIssue[];
-  }) => ReactNode;
-  /** Optional wrapper around each rendered node (used for ErrorBoundary in M4). */
-  wrapNode?: (nodeId: string, path: string, element: ReactNode) => ReactNode;
+  onNavigate?: ((target: string) => void) | undefined;
+  onOpenDialog?: ((dialog: DialogPayload) => void) | undefined;
+  onStateChange?: ((state: StateMap) => void) | undefined;
+  onNodeError?: ((info: { nodeId: string; path: string; error: Error }) => void) | undefined;
+  renderFallback?:
+    | ((info: {
+        nodeId: string;
+        path: string;
+        reason: string;
+        issues?: ValidationIssue[];
+      }) => ReactNode)
+    | undefined;
 }
 
 const DocumentRootEnvelopeSchema = z.object({
@@ -36,33 +38,6 @@ const DocumentRootEnvelopeSchema = z.object({
   root: z.unknown(),
 });
 
-function DefaultFallback({
-  nodeId,
-  path,
-  reason,
-}: {
-  nodeId: string;
-  path: string;
-  reason: string;
-}) {
-  return (
-    <div
-      role="status"
-      data-sdui-fallback={nodeId}
-      style={{
-        padding: '0.5rem 0.75rem',
-        border: '1px dashed var(--color-fallback-border, #d4a72c)',
-        backgroundColor: 'var(--color-fallback-bg, #fff8c5)',
-        color: 'var(--color-fallback-text, #7d4e00)',
-        borderRadius: '4px',
-        fontSize: '0.875rem',
-      }}
-    >
-      <strong>Fallback ({path}):</strong> {reason}
-    </div>
-  );
-}
-
 function renderRawNode(
   rawNode: unknown,
   path: string,
@@ -70,7 +45,7 @@ function renderRawNode(
   context: SduiRuntimeContext,
   options: {
     renderFallback?: SduiRendererProps['renderFallback'];
-    wrapNode?: SduiRendererProps['wrapNode'];
+    onNodeError?: SduiRendererProps['onNodeError'];
   },
 ): ReactNode {
   const envelope = RawNodeEnvelopeSchema.safeParse(rawNode);
@@ -80,7 +55,7 @@ function renderRawNode(
     return options.renderFallback ? (
       options.renderFallback({ nodeId: fallbackNodeId, path, reason })
     ) : (
-      <DefaultFallback key={path} nodeId={fallbackNodeId} path={path} reason={reason} />
+      <NodeFallback key={path} nodeId={fallbackNodeId} path={path} reason={reason} />
     );
   }
 
@@ -106,7 +81,7 @@ function renderRawNode(
     return options.renderFallback ? (
       options.renderFallback({ nodeId, path, reason })
     ) : (
-      <DefaultFallback key={nodeId} nodeId={nodeId} path={path} reason={reason} />
+      <NodeFallback key={nodeKey} nodeId={nodeId} path={path} reason={reason} />
     );
   }
 
@@ -121,16 +96,34 @@ function renderRawNode(
         issues: result.issues,
       })
     ) : (
-      <DefaultFallback key={nodeId} nodeId={nodeId} path={path} reason={reason} />
+      <NodeFallback
+        key={nodeKey}
+        nodeId={nodeId}
+        path={path}
+        reason={reason}
+        issues={result.issues}
+      />
     );
   }
 
-  return options.wrapNode ? options.wrapNode(nodeKey, path, result.element) : result.element;
+  const resetKey = JSON.stringify({ type, rawProps });
+  return (
+    <NodeErrorBoundary
+      key={nodeKey}
+      nodeId={nodeId}
+      path={path}
+      resetKey={resetKey}
+      onError={options.onNodeError}
+    >
+      {result.element}
+    </NodeErrorBoundary>
+  );
 }
 
 /**
  * Renders a screen document using the supplied ComponentRegistry.
- * Validates each node independently so one broken node never takes down the screen.
+ * Validates each node independently and wraps each node in a NodeErrorBoundary
+ * so one broken node never takes down the rest of the screen.
  */
 export function SduiRenderer({
   document,
@@ -138,8 +131,8 @@ export function SduiRenderer({
   onNavigate,
   onOpenDialog,
   onStateChange,
+  onNodeError,
   renderFallback,
-  wrapNode,
 }: SduiRendererProps) {
   const docEnvelope = DocumentRootEnvelopeSchema.safeParse(document);
   const initialState = useMemo(
@@ -205,7 +198,7 @@ export function SduiRenderer({
 
   if (!docEnvelope.success) {
     return (
-      <div role="alert" data-sdui-document-error="true">
+      <div role="alert" data-sdui-document-error="true" className="sdui-document-error">
         Unable to render document: expected an object with a <code>root</code> node.
       </div>
     );
@@ -215,7 +208,7 @@ export function SduiRenderer({
     <div data-sdui-screen={screenId}>
       {renderRawNode(docEnvelope.data.root, 'root', registry, context, {
         renderFallback,
-        wrapNode,
+        onNodeError,
       })}
     </div>
   );

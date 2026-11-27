@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     name: Lint · Typecheck · Test · Build
@@ -79,18 +82,16 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
-  deploy:
-    name: Deploy to GitHub Pages
+  build-pages:
+    name: Build GitHub Pages Artifact
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [ci, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
+      contents: read
       pages: write
       id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -106,17 +107,33 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
       - name: Build
         run: pnpm build
         env:
           VITE_BASE_URL: /sdui-lab/
 
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: dist/
+          path: ./dist
 
-      - name: Deploy
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build-pages
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

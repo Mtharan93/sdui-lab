@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { z } from 'zod';
+import { migrateRawV1BestEffort } from '@/migrations';
 import {
   RawNodeEnvelopeSchema,
   StateMapSchema,
@@ -8,13 +9,15 @@ import {
   type StateValue,
   type ValidationIssue,
 } from '@/schema';
+import { dispatchAction } from './actions';
+import { isSafeStateKey, resolveBindings } from './binding';
 import { NodeErrorBoundary } from './ErrorBoundary';
 import { NodeFallback } from './NodeFallback';
 import type { ComponentRegistry } from './registry';
 import type { DialogPayload, SduiRuntimeContext } from './types';
 
 export interface SduiRendererProps {
-  /** Raw JSON document (v2 or unknown shape — validated node-by-node for resilience). */
+  /** Raw JSON document (v1 or v2 — v1 is migrated best-effort; validated node-by-node). */
   document: unknown;
   registry: ComponentRegistry;
   onNavigate?: ((target: string) => void) | undefined;
@@ -122,8 +125,8 @@ function renderRawNode(
 
 /**
  * Renders a screen document using the supplied ComponentRegistry.
- * Validates each node independently and wraps each node in a NodeErrorBoundary
- * so one broken node never takes down the rest of the screen.
+ * Migrates v1 documents automatically, resolves {{state.*}} bindings safely,
+ * dispatches declarative actions, and isolates node failures with ErrorBoundaries.
  */
 export function SduiRenderer({
   document,
@@ -134,7 +137,9 @@ export function SduiRenderer({
   onNodeError,
   renderFallback,
 }: SduiRendererProps) {
-  const docEnvelope = DocumentRootEnvelopeSchema.safeParse(document);
+  const normalizedDoc = useMemo(() => migrateRawV1BestEffort(document), [document]);
+  const docEnvelope = DocumentRootEnvelopeSchema.safeParse(normalizedDoc);
+
   const initialState = useMemo(
     () =>
       docEnvelope.success && docEnvelope.data.initialState ? docEnvelope.data.initialState : {},
@@ -146,17 +151,49 @@ export function SduiRenderer({
   const [prevScreenKey, setPrevScreenKey] = useState<string>(
     `${screenId}:${JSON.stringify(initialState)}`,
   );
+  const [activeDialog, setActiveDialog] = useState<DialogPayload | null>(null);
+
+  const dialogTitleId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const currentScreenKey = `${screenId}:${JSON.stringify(initialState)}`;
   if (currentScreenKey !== prevScreenKey) {
     setPrevScreenKey(currentScreenKey);
     setState(initialState);
+    setActiveDialog(null);
   }
 
-  const getStateValue = useCallback((key: string): StateValue | undefined => state[key], [state]);
+  useEffect(() => {
+    if (activeDialog === null) {
+      return;
+    }
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActiveDialog(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeDialog]);
+
+  const getStateValue = useCallback(
+    (key: string): StateValue | undefined => {
+      if (!isSafeStateKey(key) || !Object.hasOwn(state, key)) {
+        return undefined;
+      }
+      return state[key];
+    },
+    [state],
+  );
 
   const setStateValue = useCallback(
     (key: string, value: StateValue) => {
+      if (!isSafeStateKey(key)) {
+        return;
+      }
       setState((prev) => {
         const next: StateMap = { ...prev, [key]: value };
         onStateChange?.(next);
@@ -166,23 +203,32 @@ export function SduiRenderer({
     [onStateChange],
   );
 
-  const resolveText = useCallback((template: string): string => template, []);
+  const resolveText = useCallback(
+    (template: string): string => resolveBindings(template, state),
+    [state],
+  );
+
+  const handleOpenDialog = useCallback(
+    (dialog: DialogPayload) => {
+      if (onOpenDialog) {
+        onOpenDialog(dialog);
+      } else {
+        setActiveDialog(dialog);
+      }
+    },
+    [onOpenDialog],
+  );
 
   const dispatch = useCallback(
     (action: Action) => {
-      switch (action.type) {
-        case 'navigate':
-          onNavigate?.(action.target);
-          break;
-        case 'setState':
-          setStateValue(action.key, action.value);
-          break;
-        case 'openDialog':
-          onOpenDialog?.({ title: action.title, body: action.body });
-          break;
-      }
+      dispatchAction(action, {
+        state,
+        setStateValue,
+        onNavigate,
+        onOpenDialog: handleOpenDialog,
+      });
     },
-    [onNavigate, onOpenDialog, setStateValue],
+    [state, setStateValue, onNavigate, handleOpenDialog],
   );
 
   const context: SduiRuntimeContext = useMemo(
@@ -205,11 +251,39 @@ export function SduiRenderer({
   }
 
   return (
-    <div data-sdui-screen={screenId}>
+    <div data-sdui-screen={screenId} className="sdui-screen">
       {renderRawNode(docEnvelope.data.root, 'root', registry, context, {
         renderFallback,
         onNodeError,
       })}
+
+      {activeDialog !== null && (
+        <div className="sdui-dialog-backdrop" role="presentation">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={dialogTitleId}
+            className="sdui-dialog"
+          >
+            <h2 id={dialogTitleId} className="sdui-dialog__title">
+              {activeDialog.title}
+            </h2>
+            <p className="sdui-dialog__body">{activeDialog.body}</p>
+            <div className="sdui-dialog__actions">
+              <button
+                ref={closeButtonRef}
+                type="button"
+                className="sdui-dialog__close"
+                onClick={() => {
+                  setActiveDialog(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

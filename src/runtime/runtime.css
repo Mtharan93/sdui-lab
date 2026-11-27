@@ -53,3 +53,58 @@
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
 }
+
+.sdui-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 1000;
+}
+
+.sdui-dialog {
+  width: 100%;
+  max-width: 26rem;
+  background-color: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-lg);
+}
+
+.sdui-dialog__title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.sdui-dialog__body {
+  margin-top: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.sdui-dialog__actions {
+  margin-top: var(--space-5);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sdui-dialog__close {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-accent);
+  color: var(--color-text-on-accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sdui-dialog__close:hover {
+  background-color: var(--color-accent-hover);
+}
